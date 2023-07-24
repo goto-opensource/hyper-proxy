@@ -54,6 +54,15 @@
 
 #![allow(missing_docs)]
 
+#[cfg(all(feature = "tls", feature = "rustls"))]
+compile_error!("cannot combine tls and rustls");
+
+#[cfg(all(feature = "openssl-tls", feature = "rustls"))]
+compile_error!("cannot combine tls and rustls");
+
+#[cfg(all(feature = "openssl-tls", feature = "tls"))]
+compile_error!("cannot combine openssl-tls and tls");
+
 mod stream;
 mod tunnel;
 
