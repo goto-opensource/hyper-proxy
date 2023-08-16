@@ -63,6 +63,7 @@ compile_error!("cannot combine tls and rustls");
 #[cfg(all(feature = "openssl-tls", feature = "tls"))]
 compile_error!("cannot combine openssl-tls and tls");
 
+pub mod error;
 mod stream;
 mod tunnel;
 
@@ -73,7 +74,7 @@ use futures_util::future::TryFutureExt;
 
 #[cfg(feature = "rustls-base")]
 use std::convert::TryFrom;
-use std::{fmt, io, sync::Arc};
+use std::{fmt, sync::Arc};
 use std::{
     future::Future,
     pin::Pin,
@@ -97,7 +98,7 @@ use openssl::ssl::{SslConnector as OpenSslConnector, SslMethod};
 #[cfg(feature = "openssl-tls")]
 use tokio_openssl::SslStream;
 
-type BoxError = Box<dyn std::error::Error + Send + Sync>;
+pub use crate::error::Error;
 
 /// The Intercept enum to filter connections
 #[derive(Debug, Clone)]
@@ -136,11 +137,6 @@ impl Dst for Uri {
     fn port(&self) -> Option<u16> {
         self.port_u16()
     }
-}
-
-#[inline]
-pub(crate) fn io_err<E: Into<Box<dyn std::error::Error + Send + Sync>>>(e: E) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, e)
 }
 
 /// A Custom struct to proxy custom uris
@@ -283,10 +279,10 @@ impl<C: fmt::Debug> fmt::Debug for ProxyConnector<C> {
 impl<C> ProxyConnector<C> {
     /// Create a new secured Proxies
     #[cfg(feature = "tls")]
-    pub fn new(connector: C) -> Result<Self, io::Error> {
+    pub fn new(connector: C) -> Result<Self, Error> {
         let tls = NativeTlsConnector::builder()
             .build()
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(|e| Error::Other(e.into()))?;
 
         Ok(ProxyConnector {
             proxies: Vec::new(),
@@ -297,13 +293,13 @@ impl<C> ProxyConnector<C> {
 
     /// Create a new secured Proxies
     #[cfg(feature = "rustls-base")]
-    pub fn new(connector: C) -> Result<Self, io::Error> {
+    pub fn new(connector: C) -> Result<Self, Error> {
         let mut roots = tokio_rustls::rustls::RootCertStore::empty();
         #[cfg(feature = "rustls")]
         for cert in rustls_native_certs::load_native_certs()? {
             roots
                 .add(&tokio_rustls::rustls::Certificate(cert.0))
-                .map_err(io_err)?;
+                .map_err(|e| Error::Other(e.into()))?;
         }
 
         #[cfg(feature = "rustls-webpki")]
@@ -335,7 +331,7 @@ impl<C> ProxyConnector<C> {
     pub fn with_custom_certificate_verifier(
         connector: C,
         verifier: Arc<dyn tokio_rustls::rustls::client::ServerCertVerifier>,
-    ) -> Result<Self, io::Error> {
+    ) -> Result<Self, Error> {
         let config = Arc::new(
             tokio_rustls::rustls::ClientConfig::builder()
                 .with_safe_defaults()
@@ -354,9 +350,9 @@ impl<C> ProxyConnector<C> {
 
     #[allow(missing_docs)]
     #[cfg(feature = "openssl-tls")]
-    pub fn new(connector: C) -> Result<Self, io::Error> {
-        let builder = OpenSslConnector::builder(SslMethod::tls())
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    pub fn new(connector: C) -> Result<Self, Error> {
+        let builder =
+            OpenSslConnector::builder(SslMethod::tls()).map_err(|e| Error::Other(e.into()))?;
         let tls = builder.build();
 
         Ok(ProxyConnector {
@@ -377,7 +373,7 @@ impl<C> ProxyConnector<C> {
 
     /// Create a proxy connector and attach a particular proxy
     #[cfg(any(feature = "tls", feature = "rustls-base", feature = "openssl-tls"))]
-    pub fn from_proxy(connector: C, proxy: Proxy) -> Result<Self, io::Error> {
+    pub fn from_proxy(connector: C, proxy: Proxy) -> Result<Self, Error> {
         let mut c = ProxyConnector::new(connector)?;
         c.proxies.push(proxy);
         Ok(c)
@@ -389,7 +385,7 @@ impl<C> ProxyConnector<C> {
         connector: C,
         proxy: Proxy,
         verifier: Arc<dyn tokio_rustls::rustls::client::ServerCertVerifier>,
-    ) -> Result<Self, io::Error> {
+    ) -> Result<Self, Error> {
         let mut c = ProxyConnector::with_custom_certificate_verifier(connector, verifier)?;
         c.proxies.push(proxy);
         Ok(c)
@@ -475,16 +471,16 @@ where
     C: Service<Uri>,
     C::Response: AsyncRead + AsyncWrite + Send + Unpin + 'static,
     C::Future: Send + 'static,
-    C::Error: Into<BoxError>,
+    C::Error: Into<Error>,
 {
     type Response = ProxyStream<C::Response>;
-    type Error = io::Error;
+    type Error = Error;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
         match self.connector.poll_ready(cx) {
             Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-            Poll::Ready(Err(e)) => Poll::Ready(Err(io_err(e.into()))),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e.into())),
             Poll::Pending => Poll::Pending,
         }
     }
@@ -512,39 +508,45 @@ where
                 Box::pin(async move {
                     loop {
                         // this hack will gone once `try_blocks` will eventually stabilized
-                        let proxy_stream = mtry!(mtry!(connection).await.map_err(io_err));
+                        let proxy_stream = mtry!(mtry!(connection).await);
                         let tunnel_stream = mtry!(tunnel.with_stream(proxy_stream).await);
 
                         break match tls {
                             #[cfg(feature = "tls")]
                             Some(tls) => {
                                 let tls = TlsConnector::from(tls);
-                                let secure_stream =
-                                    mtry!(tls.connect(&host, tunnel_stream).await.map_err(io_err));
+                                let secure_stream = mtry!(tls
+                                    .connect(&host, tunnel_stream)
+                                    .await
+                                    .map_err(|e| Error::Other(e.into())));
 
                                 Ok(ProxyStream::Secured(secure_stream))
                             }
 
                             #[cfg(feature = "rustls-base")]
                             Some(tls) => {
-                                let server_name =
-                                    mtry!(ServerName::try_from(host.as_str()).map_err(io_err));
+                                let server_name = mtry!(ServerName::try_from(host.as_str()));
                                 let tls = TlsConnector::from(tls);
-                                let secure_stream = mtry!(tls
-                                    .connect(server_name, tunnel_stream)
-                                    .await
-                                    .map_err(io_err));
+                                let secure_stream =
+                                    mtry!(tls.connect(server_name, tunnel_stream).await);
 
                                 Ok(ProxyStream::Secured(secure_stream))
                             }
 
                             #[cfg(feature = "openssl-tls")]
                             Some(tls) => {
-                                let config = tls.configure().map_err(io_err)?;
-                                let ssl = config.into_ssl(&host).map_err(io_err)?;
+                                let config = tls
+                                    .configure() //.map_err(io_err)?;
+                                    .map_err(|e| Error::Other(e.into()))?;
+                                let ssl = config
+                                    .into_ssl(&host) //.map_err(io_err)?;
+                                    .map_err(|e| Error::Other(e.into()))?;
 
                                 let mut stream = mtry!(SslStream::new(ssl, tunnel_stream));
-                                mtry!(Pin::new(&mut stream).connect().await.map_err(io_err));
+                                mtry!(Pin::new(&mut stream)
+                                    .connect()
+                                    .await //.map_err(io_err));
+                                    .map_err(|e| Error::Other(e.into())));
 
                                 Ok(ProxyStream::Secured(stream))
                             }
@@ -566,9 +568,9 @@ where
                         self.connector
                             .call(proxy_uri)
                             .map_ok(ProxyStream::Regular)
-                            .map_err(|err| io_err(err.into())),
+                            .map_err(|err| err.into()),
                     ),
-                    Err(err) => Box::pin(futures_util::future::err(io_err(err))),
+                    Err(err) => Box::pin(futures_util::future::err(err.into())),
                 }
             }
         } else {
@@ -576,26 +578,25 @@ where
                 self.connector
                     .call(uri)
                     .map_ok(ProxyStream::NoProxy)
-                    .map_err(|err| io_err(err.into())),
+                    .map_err(|err| err.into()),
             )
         }
     }
 }
 
-fn proxy_dst(dst: &Uri, proxy: &Uri) -> io::Result<Uri> {
-    Uri::builder()
+fn proxy_dst(dst: &Uri, proxy: &Uri) -> Result<Uri, Error> {
+    Ok(Uri::builder()
         .scheme(
             proxy
                 .scheme_str()
-                .ok_or_else(|| io_err(format!("proxy uri missing scheme: {}", proxy)))?,
+                .ok_or_else(|| Error::MissingUriScheme(proxy.clone()))?,
         )
         .authority(
             proxy
                 .authority()
-                .ok_or_else(|| io_err(format!("proxy uri missing host: {}", proxy)))?
+                .ok_or_else(|| Error::MissingUriHost(proxy.clone()))?
                 .clone(),
         )
         .path_and_query(dst.path_and_query().unwrap().clone())
-        .build()
-        .map_err(|err| io_err(format!("other error: {}", err)))
+        .build()?)
 }
