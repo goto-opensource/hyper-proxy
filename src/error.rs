@@ -15,6 +15,9 @@ pub enum Error {
     #[error("unsuccessful tunnel ({0})")]
     UnsuccessfulTunnel(String),
 
+    #[error("Proxy Authentication Required, please set the credentials and retry")]
+    ProxyAuthenticationRequired,
+
     #[error("proxy uri missing scheme: {0}")]
     MissingUriHost(Uri),
 

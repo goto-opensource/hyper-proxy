@@ -113,6 +113,12 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                                 return Poll::Ready(Ok(this.stream.take().unwrap()));
                             }
                         // else read more
+                        } else if read.starts_with(b"HTTP/1.1 407")
+                            || read.starts_with(b"HTTP/1.0 407")
+                        {
+                            return Poll::Ready(Err(
+                                crate::error::Error::ProxyAuthenticationRequired,
+                            ));
                         } else {
                             // let len = read.len().min(16);
                             return Poll::Ready(Err(Error::UnsuccessfulTunnel(
