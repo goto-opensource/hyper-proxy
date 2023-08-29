@@ -320,6 +320,7 @@ dependencies = [
  "futures-util",
  "headers",
  "http",
+ "httparse",
  "hyper",
  "hyper-rustls",
  "hyper-tls",

@@ -103,19 +103,32 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                 futures_util::pin_mut!(fut);
                 let n = try_ready!(fut.poll(ctx));
 
+                let mut headers = [httparse::EMPTY_HEADER; 16];
+                let mut response = httparse::Response::new(&mut headers);
+
                 if n == 0 {
                     return Poll::Ready(Err(Error::UnexpectedEOF));
                 } else {
                     let read = &this.buf[..];
-                    if read.len() > 12 {
-                        if read.starts_with(b"HTTP/1.1 200") || read.starts_with(b"HTTP/1.0 200") {
+
+                    let parsed = match response.parse(read) {
+                        Ok(parsed) => parsed,
+                        Err(err) => {
+                            return Poll::Ready(Err(Error::UnsuccessfulTunnel(format!(
+                                "failed to parse proxy http response ({err})"
+                            ))))
+                        }
+                    };
+
+                    if parsed.is_complete() {
+                        // connect tunnel on 200
+                        if response.code == Some(200) {
                             if read.ends_with(b"\r\n\r\n") {
                                 return Poll::Ready(Ok(this.stream.take().unwrap()));
                             }
-                        // else read more
-                        } else if read.starts_with(b"HTTP/1.1 407")
-                            || read.starts_with(b"HTTP/1.0 407")
-                        {
+                        }
+                        // error with authentication required
+                        else if response.code == Some(407) {
                             return Poll::Ready(Err(
                                 crate::error::Error::ProxyAuthenticationRequired,
                             ));
