@@ -127,11 +127,29 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                                 return Poll::Ready(Ok(this.stream.take().unwrap()));
                             }
                         }
+                        // error with location on 301
+                        else if matches!(response.code, Some(301..=399)) {
+                            let location = response
+                                .headers
+                                .iter()
+                                .find(|h| h.name.to_lowercase() == "location");
+                            if let Some(location) =
+                                location.and_then(|l| std::convert::TryInto::try_into(l.value).ok())
+                            {
+                                return Poll::Ready(Err(Error::ProxyRedirect(location)));
+                            } else if let Some(code) = response.code {
+                                return Poll::Ready(Err(Error::MissingProxyRedirectLocation {
+                                    code,
+                                }));
+                            } else {
+                                return Poll::Ready(Err(Error::UnsuccessfulTunnel(
+                                    String::from_utf8_lossy(&read).to_string(),
+                                )));
+                            }
+                        }
                         // error with authentication required
                         else if response.code == Some(407) {
-                            return Poll::Ready(Err(
-                                crate::error::Error::ProxyAuthenticationRequired,
-                            ));
+                            return Poll::Ready(Err(Error::ProxyAuthenticationRequired));
                         } else {
                             // let len = read.len().min(16);
                             return Poll::Ready(Err(Error::UnsuccessfulTunnel(
