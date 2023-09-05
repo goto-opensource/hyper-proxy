@@ -136,7 +136,10 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                             if let Some(location) =
                                 location.and_then(|l| std::convert::TryInto::try_into(l.value).ok())
                             {
-                                return Poll::Ready(Err(Error::ProxyRedirect(location)));
+                                return Poll::Ready(Err(Error::ProxyRedirect {
+                                    status_code: response.code.unwrap(),
+                                    location,
+                                }));
                             } else if let Some(code) = response.code {
                                 return Poll::Ready(Err(Error::MissingProxyRedirectLocation {
                                     code,
