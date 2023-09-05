@@ -485,21 +485,22 @@ where
         }
     }
 
-    fn call(&mut self, uri: Uri) -> Self::Future {
-        if let (Some(p), Some(host)) = (self.match_proxy(&uri), uri.host()) {
-            if uri.scheme() == Some(&http::uri::Scheme::HTTPS) || p.force_connect {
-                let host = host.to_owned();
-                let port =
-                    uri.port_u16()
-                        .unwrap_or(if uri.scheme() == Some(&http::uri::Scheme::HTTP) {
-                            80
-                        } else {
-                            443
-                        });
-                let tunnel = tunnel::new(&host, port, &p.headers);
-                let connection =
-                    proxy_dst(&uri, &p.uri).map(|proxy_url| self.connector.call(proxy_url));
-                let tls = if uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
+    fn call(&mut self, target_uri: Uri) -> Self::Future {
+        if let (Some(proxy), Some(target_host)) = (self.match_proxy(&target_uri), target_uri.host())
+        {
+            if target_uri.scheme() == Some(&http::uri::Scheme::HTTPS) || proxy.force_connect {
+                let target_host = target_host.to_owned();
+                let port = target_uri.port_u16().unwrap_or(
+                    if target_uri.scheme() == Some(&http::uri::Scheme::HTTP) {
+                        80
+                    } else {
+                        443
+                    },
+                );
+                let tunnel = tunnel::new(&proxy.uri, &target_host, port, &proxy.headers);
+                let connection = proxy_dst(&target_uri, &proxy.uri)
+                    .map(|proxy_url| self.connector.call(proxy_url));
+                let tls = if target_uri.scheme() == Some(&http::uri::Scheme::HTTPS) {
                     self.tls.clone()
                 } else {
                     None
@@ -516,7 +517,7 @@ where
                             Some(tls) => {
                                 let tls = TlsConnector::from(tls);
                                 let secure_stream = mtry!(tls
-                                    .connect(&host, tunnel_stream)
+                                    .connect(&target_host, tunnel_stream)
                                     .await
                                     .map_err(|e| Error::Other(e.into())));
 
@@ -525,7 +526,7 @@ where
 
                             #[cfg(feature = "rustls-base")]
                             Some(tls) => {
-                                let server_name = mtry!(ServerName::try_from(host.as_str()));
+                                let server_name = mtry!(ServerName::try_from(target_host.as_str()));
                                 let tls = TlsConnector::from(tls);
                                 let secure_stream =
                                     mtry!(tls.connect(server_name, tunnel_stream).await);
@@ -539,7 +540,7 @@ where
                                     .configure() //.map_err(io_err)?;
                                     .map_err(|e| Error::Other(e.into()))?;
                                 let ssl = config
-                                    .into_ssl(&host) //.map_err(io_err)?;
+                                    .into_ssl(&target_host) //.map_err(io_err)?;
                                     .map_err(|e| Error::Other(e.into()))?;
 
                                 let mut stream = mtry!(SslStream::new(ssl, tunnel_stream));
@@ -563,7 +564,7 @@ where
                     }
                 })
             } else {
-                match proxy_dst(&uri, &p.uri) {
+                match proxy_dst(&target_uri, &proxy.uri) {
                     Ok(proxy_uri) => Box::pin(
                         self.connector
                             .call(proxy_uri)
@@ -576,7 +577,7 @@ where
         } else {
             Box::pin(
                 self.connector
-                    .call(uri)
+                    .call(target_uri)
                     .map_ok(ProxyStream::NoProxy)
                     .map_err(|err| err.into()),
             )

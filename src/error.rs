@@ -18,8 +18,12 @@ pub enum Error {
     #[error("Proxy Authentication Required, please set the credentials and retry")]
     ProxyAuthenticationRequired,
 
-    #[error("Proxy is redirecting to {location} (status {status_code})")]
-    ProxyRedirect { status_code: u16, location: Uri },
+    #[error("Proxy {proxy_uri} is redirecting to {location} (status {status_code})")]
+    ProxyRedirect {
+        status_code: u16,
+        location: Uri,
+        proxy_uri: Uri,
+    },
 
     #[error("Proxy is redirecting ({code}), but no location provided")]
     MissingProxyRedirectLocation { code: u16 },

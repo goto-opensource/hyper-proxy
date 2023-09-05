@@ -1,5 +1,5 @@
 use bytes::{buf::Buf, BytesMut};
-use http::HeaderMap;
+use http::{HeaderMap, Uri};
 use std::fmt::{self, Display, Formatter};
 use std::future::Future;
 use std::pin::Pin;
@@ -19,6 +19,7 @@ macro_rules! try_ready {
 }
 
 pub(crate) struct TunnelConnect {
+    proxy_uri: Uri,
     buf: BytesMut,
 }
 
@@ -26,6 +27,7 @@ impl TunnelConnect {
     /// Change stream
     pub fn with_stream<S>(self, stream: S) -> Tunnel<S> {
         Tunnel {
+            proxy_uri: self.proxy_uri,
             buf: self.buf,
             stream: Some(stream),
             state: TunnelState::Writing,
@@ -34,6 +36,7 @@ impl TunnelConnect {
 }
 
 pub(crate) struct Tunnel<S> {
+    proxy_uri: Uri,
     buf: BytesMut,
     stream: Option<S>,
     state: TunnelState,
@@ -59,19 +62,25 @@ impl<'a> Display for HeadersDisplay<'a> {
 }
 
 /// Creates a new tunnel through proxy
-pub(crate) fn new(host: &str, port: u16, headers: &HeaderMap) -> TunnelConnect {
+pub(crate) fn new(
+    proxy_uri: &Uri,
+    target_host: &str,
+    port: u16,
+    headers: &HeaderMap,
+) -> TunnelConnect {
     let buf = format!(
         "CONNECT {0}:{1} HTTP/1.1\r\n\
          Host: {0}:{1}\r\n\
          {2}\
          \r\n",
-        host,
+        target_host,
         port,
         HeadersDisplay(headers)
     )
     .into_bytes();
 
     TunnelConnect {
+        proxy_uri: proxy_uri.to_owned(),
         buf: buf.as_slice().into(),
     }
 }
@@ -138,6 +147,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                             {
                                 return Poll::Ready(Err(Error::ProxyRedirect {
                                     status_code: response.code.unwrap(),
+                                    proxy_uri: this.proxy_uri.to_owned(),
                                     location,
                                 }));
                             } else if let Some(code) = response.code {
@@ -179,7 +189,8 @@ mod tests {
     use tokio::runtime::Runtime;
 
     fn tunnel<S>(conn: S, host: String, port: u16) -> Tunnel<S> {
-        super::new(&host, port, &HeaderMap::new()).with_stream(conn)
+        let fake_uri = http::Uri::from_static("http://example.com");
+        super::new(&fake_uri, &host, port, &HeaderMap::new()).with_stream(conn)
     }
 
     #[cfg_attr(rustfmt, rustfmt_skip)]
