@@ -37,6 +37,9 @@ pub enum Error {
     #[error("{0}")]
     Http(#[from] http::Error),
 
+    // TODO: not feasable until hyper_util::client::legacy::connect::http::ConnectError is made public
+    // #[error("{0}")]
+    // Connect(#[from] hyper_util::client::legacy::connect::http::ConnectError),
     #[cfg(feature = "openssl-tls")]
     #[error("{0}")]
     Openssl(#[from] openssl::error::ErrorStack),
@@ -50,9 +53,9 @@ pub enum Error {
 }
 
 impl Error {
-    /// When receiving a [`hyper::Error`] higher up in the stack, this function can be used to
-    /// get a reference to the underlying [`hyper_proxy::Error`] that caused it.
-    pub fn as_source_of(hyper_error: &hyper::Error) -> Option<&Error> {
+    /// When receiving a [`hyper_util::client::legacy::Error`] higher up in the stack, this function can be used to
+    /// get a reference to the underlying [`crate::Error`] that caused it.
+    pub fn as_source_of(hyper_error: &hyper_util::client::legacy::Error) -> Option<&Error> {
         hyper_error.source().and_then(|c| c.downcast_ref::<Error>())
     }
 }

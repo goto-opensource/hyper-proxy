@@ -15,33 +15,36 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "1", features = ["io-std", "io-util"] }
-hyper = { version = "0.14", features = ["client"] }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1"] }
 
 tower-service = "0.3"
-http = "0.2"
+http = "1"
 futures-util = { version = "0.3", default-features = false }
 bytes = "1"
-hyper-tls = { version = "0.5", optional = true }
+hyper-tls = { version = "0.6", optional = true }
 tokio-native-tls = { version = "0.3", optional = true }
 native-tls = { version = "0.2", optional = true }
 openssl = { version = "0.10", optional = true }
 tokio-openssl = { version = "0.6", optional = true }
-tokio-rustls = { version = "0.24", optional = true }
-hyper-rustls = { version = "0.24", optional = true }
+tokio-rustls = { version = "0.25", optional = true }
+hyper-rustls = { version = "0.26", optional = true }
 httparse = "1.8"
 
 webpki = { version = "0.22", optional = true }
-rustls-native-certs = { version = "0.6", optional = true }
-webpki-roots = { version = "0.24", optional = true }
-headers = "0.3"
+rustls-native-certs = { version = "0.7", optional = true }
+webpki-roots = { version = "0.26", optional = true }
+headers = "0.4"
 thiserror = "1"
 
 [dev-dependencies]
-tokio = { version = "1.32", features = ["full"] }
-hyper = { version = "0.14", features = ["client", "http1", "tcp"] }
+tokio = { version = "1.33", features = ["full"] }
+hyper = { version = "1", features = ["client", "http1"] }
+http-body-util = "0.1.0"
+bytes = "1"
 
 [features]
-openssl-tls = ["openssl", "tokio-openssl"]
+openssl-tls = ["openssl", "tokio-openssl", "hyper-util/tokio"]
 tls = ["tokio-native-tls", "hyper-tls", "native-tls"]
 # note that `rustls-base` is not a valid feature on its own - it will configure rustls without root
 # certificates!
