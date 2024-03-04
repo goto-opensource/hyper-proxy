@@ -29,7 +29,7 @@ pub enum ProxyStream<R> {
     NoProxy(R),
     Regular(R),
     #[cfg(any(feature = "tls", feature = "rustls-base", feature = "openssl-tls"))]
-    Secured(TokioIo<TlsStream<TokioIo<R>>>),
+    Secured(Box<TokioIo<TlsStream<TokioIo<R>>>>),
 }
 
 macro_rules! match_fn_pinned {

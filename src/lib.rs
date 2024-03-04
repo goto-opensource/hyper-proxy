@@ -146,6 +146,7 @@ impl Dst for Uri {
 }
 
 /// A Custom struct to proxy custom uris
+#[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct Custom(Arc<dyn Fn(Option<&str>, Option<&str>, Option<u16>) -> bool + Send + Sync>);
 
@@ -198,7 +199,7 @@ impl Proxy {
     pub fn new<I: Into<Intercept>>(intercept: I, uri: Uri) -> Proxy {
         Proxy {
             intercept: intercept.into(),
-            uri: uri,
+            uri,
             headers: HeaderMap::new(),
             force_connect: false,
         }
@@ -292,7 +293,7 @@ impl<C> ProxyConnector<C> {
 
         Ok(ProxyConnector {
             proxies: Vec::new(),
-            connector: connector,
+            connector,
             tls: Some(tls),
         })
     }
@@ -318,7 +319,7 @@ impl<C> ProxyConnector<C> {
 
         Ok(ProxyConnector {
             proxies: Vec::new(),
-            connector: connector,
+            connector,
             tls: Some(tls),
         })
     }
@@ -341,7 +342,7 @@ impl<C> ProxyConnector<C> {
 
         Ok(ProxyConnector {
             proxies: Vec::new(),
-            connector: connector,
+            connector,
             tls: Some(tls),
         })
     }
@@ -355,7 +356,7 @@ impl<C> ProxyConnector<C> {
 
         Ok(ProxyConnector {
             proxies: Vec::new(),
-            connector: connector,
+            connector,
             tls: Some(tls),
         })
     }
@@ -364,7 +365,7 @@ impl<C> ProxyConnector<C> {
     pub fn unsecured(connector: C) -> Self {
         ProxyConnector {
             proxies: Vec::new(),
-            connector: connector,
+            connector,
             tls: None,
         }
     }
@@ -399,26 +400,26 @@ impl<C> ProxyConnector<C> {
     /// Change proxy connector
     pub fn with_connector<CC>(self, connector: CC) -> ProxyConnector<CC> {
         ProxyConnector {
-            connector: connector,
+            connector,
             proxies: self.proxies,
             tls: self.tls,
         }
     }
 
     /// Set or unset tls when tunneling
-    #[cfg(any(feature = "tls"))]
+    #[cfg(feature = "tls")]
     pub fn set_tls(&mut self, tls: Option<NativeTlsConnector>) {
         self.tls = tls;
     }
 
     /// Set or unset tls when tunneling
-    #[cfg(any(feature = "rustls-base"))]
+    #[cfg(feature = "rustls-base")]
     pub fn set_tls(&mut self, tls: Option<TlsConnector>) {
         self.tls = tls;
     }
 
     /// Set or unset tls when tunneling
-    #[cfg(any(feature = "openssl-tls"))]
+    #[cfg(feature = "openssl-tls")]
     pub fn set_tls(&mut self, tls: Option<OpenSslConnector>) {
         self.tls = tls;
     }
@@ -505,6 +506,7 @@ where
                 };
 
                 Box::pin(async move {
+                    #[allow(clippy::never_loop)]
                     loop {
                         // this hack will gone once `try_blocks` will eventually stabilized
                         let proxy_stream = TokioIo::new(mtry!(mtry!(connection).await));
@@ -519,17 +521,16 @@ where
                                     .await
                                     .map_err(|e| Error::Other(e.into())));
 
-                                Ok(ProxyStream::Secured(TokioIo::new(secure_stream)))
+                                Ok(ProxyStream::Secured(Box::new(TokioIo::new(secure_stream))))
                             }
 
                             #[cfg(feature = "rustls-base")]
                             Some(tls) => {
                                 let server_name = mtry!(ServerName::try_from(target_host));
-                                let tls = TlsConnector::from(tls);
                                 let secure_stream =
                                     mtry!(tls.connect(server_name, tunnel_stream).await);
 
-                                Ok(ProxyStream::Secured(TokioIo::new(secure_stream)))
+                                Ok(ProxyStream::Secured(Box::new(TokioIo::new(secure_stream))))
                             }
 
                             #[cfg(feature = "openssl-tls")]
@@ -547,7 +548,7 @@ where
                                     .await //.map_err(io_err));
                                     .map_err(|e| Error::Other(e.into())));
 
-                                Ok(ProxyStream::Secured(TokioIo::new(stream)))
+                                Ok(ProxyStream::Secured(Box::new(TokioIo::new(stream))))
                             }
 
                             #[cfg(not(any(
@@ -569,7 +570,7 @@ where
                             .map_ok(ProxyStream::Regular)
                             .map_err(|err| err.into()),
                     ),
-                    Err(err) => Box::pin(futures_util::future::err(err.into())),
+                    Err(err) => Box::pin(futures_util::future::err(err)),
                 }
             }
         } else {

@@ -157,7 +157,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                                     }));
                                 } else {
                                     return Poll::Ready(Err(Error::UnsuccessfulTunnel(
-                                        String::from_utf8_lossy(&read).to_string(),
+                                        String::from_utf8_lossy(read).to_string(),
                                     )));
                                 }
                             }
@@ -168,7 +168,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Future for Tunnel<S> {
                             _ => {
                                 // let len = read.len().min(16);
                                 return Poll::Ready(Err(Error::UnsuccessfulTunnel(
-                                    String::from_utf8_lossy(&read).to_string(),
+                                    String::from_utf8_lossy(read).to_string(),
                                 )));
                             }
                         }
@@ -196,7 +196,6 @@ mod tests {
         super::new(&fake_uri, &host, port, &HeaderMap::new()).with_stream(conn)
     }
 
-    #[cfg_attr(rustfmt, rustfmt_skip)]
     macro_rules! mock_tunnel {
         () => {{
             mock_tunnel!(
@@ -217,7 +216,8 @@ mod tests {
                  ",
                 addr.ip(),
                 addr.port()
-            ).into_bytes();
+            )
+            .into_bytes();
 
             thread::spawn(move || {
                 let (mut sock, _) = listener.accept().unwrap();
