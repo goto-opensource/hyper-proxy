@@ -61,6 +61,7 @@ use http::header::{HeaderMap, HeaderName, HeaderValue};
 use hyper::{service::Service, Uri};
 
 use futures_util::future::TryFutureExt;
+
 #[cfg(feature = "rustls-base")]
 use std::convert::TryFrom;
 use std::{fmt, io, sync::Arc};
@@ -320,6 +321,28 @@ impl<C> ProxyConnector<C> {
         })
     }
 
+    /// Create a new secured Proxies
+    #[cfg(all(feature = "rustls-base", feature = "dangerous"))]
+    pub fn with_custom_certificate_verifier(
+        connector: C,
+        verifier: Arc<dyn tokio_rustls::rustls::client::ServerCertVerifier>,
+    ) -> Result<Self, io::Error> {
+        let config = Arc::new(
+            tokio_rustls::rustls::ClientConfig::builder()
+                .with_safe_defaults()
+                .with_custom_certificate_verifier(verifier)
+                .with_no_client_auth(),
+        );
+
+        let tls = TlsConnector::from(config);
+
+        Ok(ProxyConnector {
+            proxies: Vec::new(),
+            connector: connector,
+            tls: Some(tls),
+        })
+    }
+
     #[allow(missing_docs)]
     #[cfg(feature = "openssl-tls")]
     pub fn new(connector: C) -> Result<Self, io::Error> {
@@ -347,6 +370,18 @@ impl<C> ProxyConnector<C> {
     #[cfg(any(feature = "tls", feature = "rustls-base", feature = "openssl-tls"))]
     pub fn from_proxy(connector: C, proxy: Proxy) -> Result<Self, io::Error> {
         let mut c = ProxyConnector::new(connector)?;
+        c.proxies.push(proxy);
+        Ok(c)
+    }
+
+    /// Create a proxy connector and attach a particular proxy
+    #[cfg(all(feature = "rustls-base", feature = "dangerous"))]
+    pub fn from_proxy_with_custom_certificate_verifier(
+        connector: C,
+        proxy: Proxy,
+        verifier: Arc<dyn tokio_rustls::rustls::client::ServerCertVerifier>,
+    ) -> Result<Self, io::Error> {
+        let mut c = ProxyConnector::with_custom_certificate_verifier(connector, verifier)?;
         c.proxies.push(proxy);
         Ok(c)
     }
