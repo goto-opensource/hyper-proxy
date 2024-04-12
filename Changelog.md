@@ -8,6 +8,12 @@
   - test: Adding missing tests
   - chore: Changes to the build process or auxiliary tools/libraries/documentation
 
+## Unreleased
+
+* feat: update to hyper 1.x (c0ffee0)
+* feat: invoke callback when proxy authentication is required (c0ffee8)
+* feat: allow injecting custom verifiers (c0ffeef)
+
 ## 0.9.0
 - feat: upgrade to tokio 1.0
 - feat: add tokio-openssl support
@@ -48,3 +54,4 @@
 - fix: Add Send + Sync constraints on Intercept::Custom function (breaking)
 - feat: Make Intercept::matches function public
 - feat: Add several function to get/modify internal states
+
