@@ -27,8 +27,8 @@ tokio-native-tls = { version = "0.3", optional = true }
 native-tls = { version = "0.2", optional = true }
 openssl = { version = "0.10", optional = true }
 tokio-openssl = { version = "0.6", optional = true }
-tokio-rustls = { version = "0.25", optional = true }
-hyper-rustls = { version = "0.26", optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+hyper-rustls = { version = "0.27", optional = true }
 httparse = "1.8"
 
 webpki = { version = "0.22", optional = true }
